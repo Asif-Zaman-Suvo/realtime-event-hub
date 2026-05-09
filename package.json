@@ -1,0 +1,19 @@
+{
+  "name": "realtime-event-hub",
+  "private": true,
+  "workspaces": [
+    "packages/*",
+    "services/*",
+    "apps/*"
+  ],
+  "scripts": {
+    "build": "npm run build -w @reh/shared -w @reh/api -w @reh/worker -w @reh/dashboard",
+    "dev:api": "npm run dev -w @reh/api",
+    "dev:worker": "npm run dev -w @reh/worker",
+    "dev:dashboard": "npm run dev -w @reh/dashboard",
+    "postinstall": "npm run build -w @reh/shared"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

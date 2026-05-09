@@ -1,0 +1,86 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: events
+      POSTGRES_PASSWORD: events
+      POSTGRES_DB: events
+      TZ: UTC
+    ports:
+      - "5433:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./infra/postgres/init.sql:/docker-entrypoint-initdb.d/01-init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U events -d events"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    command: ["redis-server", "--appendonly", "yes"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  api:
+    build:
+      context: .
+      dockerfile: services/api/Dockerfile
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      CORS_ORIGIN: http://localhost:5173
+      DATABASE_URL: postgres://events:events@postgres:5432/events
+      REDIS_URL: redis://redis:6379
+      REDIS_STREAM_KEY: events:stream
+      REDIS_CONSUMER_GROUP: persist-workers
+      REDIS_METRICS_CHANNEL: events:metrics
+    ports:
+      - "3000:3000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  worker:
+    build:
+      context: .
+      dockerfile: services/worker/Dockerfile
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: postgres://events:events@postgres:5432/events
+      REDIS_URL: redis://redis:6379
+      REDIS_STREAM_KEY: events:stream
+      REDIS_CONSUMER_GROUP: persist-workers
+      REDIS_METRICS_CHANNEL: events:metrics
+      WORKER_NAME: worker-1
+      WORKER_BATCH_SIZE: "500"
+      WORKER_FLUSH_MS: "3000"
+      WORKER_BLOCK_MS: "5000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  dashboard:
+    build:
+      context: .
+      dockerfile: apps/dashboard/Dockerfile
+    environment:
+      VITE_API_URL: http://localhost:3000
+      VITE_WS_URL: ws://localhost:3000
+    ports:
+      - "5173:5173"
+    depends_on:
+      - api
+
+volumes:
+  postgres_data: {}
